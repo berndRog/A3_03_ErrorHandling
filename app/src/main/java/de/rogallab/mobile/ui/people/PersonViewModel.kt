@@ -2,10 +2,10 @@ package de.rogallab.mobile.ui.people
 
 import androidx.compose.material3.SnackbarDuration
 import de.rogallab.mobile.domain.IPersonRepository
-import de.rogallab.mobile.domain.ResultData
 import de.rogallab.mobile.domain.entities.Person
 import de.rogallab.mobile.domain.utilities.as8
 import de.rogallab.mobile.domain.utilities.logDebug
+import de.rogallab.mobile.domain.utilities.logError
 import de.rogallab.mobile.domain.utilities.newUuid
 import de.rogallab.mobile.ui.base.BaseViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,61 +69,61 @@ class PersonViewModel(
    }
 
    private fun fetchById(id: String) {
-      when (val resultData = _repository.getById(id)) {
-         is ResultData.Success -> {
-            if(resultData.data != null) {
-               logDebug(TAG, "fetchPersonById: ${resultData.data.id.as8()}")
+      logDebug(TAG, "fetchById() $id")
+      _repository.findById(id)
+         .onSuccess { person ->
+            if(person != null) {
+               logDebug(TAG, "fetchPersonById")
                _personUiStateFlow.update { it: PersonUiState ->
-                  it.copy(person = resultData.data ?: Person(id = newUuid()))  // new UiState
+                  it.copy(person = person)  // new UiState
                }
             } else {
                handleErrorEvent(message = "Person not found")
                // navigate to PeopleListScreen
             }
          }
-         is ResultData.Error -> handleErrorEvent(
-            throwable = resultData.throwable)
+         .onFailure { t ->
+            handleErrorEvent(t)
             // navigate to PeopleListScreen
-      }
+         }
    }
 
    private fun clearState() {
       _personUiStateFlow.update { it.copy(person = Person(id = newUuid() )) }
    }
+
    private fun create() {
       logDebug(TAG, "createPerson")
-      when (val resultData = _repository.create(_personUiStateFlow.value.person)) {
-         is ResultData.Success -> fetch() // refresh the list
-         is ResultData.Error -> handleErrorEvent(resultData.throwable)
-      }
+      _repository.create(_personUiStateFlow.value.person)
+         .onSuccess { fetch() } // reread all people
+         .onFailure { t -> handleErrorEvent(t) }
    }
+
    private fun update() {
-      logDebug(TAG, "updatePerson")
-      when (val resultData = _repository.update(_personUiStateFlow.value.person)) {
-         is ResultData.Success -> fetch() // refresh the list
-         is ResultData.Error -> handleErrorEvent(resultData.throwable)
-      }
+      logDebug(TAG, "updatePerson()")
+      _repository.update(_personUiStateFlow.value.person)
+         .onSuccess { fetch() } // reread all people
+         .onFailure { t -> handleErrorEvent(t) }
    }
 
    private var removedPerson: Person? = null
    private fun remove(person: Person) {
+      logDebug(TAG, "removePerson()")
       removedPerson = person
-      logDebug(TAG, "removePerson: $person")
-      when (val resultData = _repository.remove(person)) {
-         is ResultData.Success -> fetch() // refresh the list
-         is ResultData.Error -> handleErrorEvent(resultData.throwable)
-      }
+      _repository.remove(person)
+         .onSuccess { fetch() } // reread all people
+         .onFailure { t -> handleErrorEvent(t) }
    }
+
    private fun undoRemove() {
       removedPerson?.let { person ->
          logDebug(TAG, "undoRemovePerson: ${person.id.as8()}")
-         when(val resultData = _repository.create(person)) {
-            is ResultData.Success -> {
+         _repository.create(person)
+            .onSuccess {
                removedPerson = null
                fetch()
             }
-            is ResultData.Error -> handleErrorEvent(resultData.throwable)
-         }
+            .onFailure { t -> handleErrorEvent(t) }
       }
    }
 
@@ -171,23 +171,17 @@ class PersonViewModel(
       }
    }
 
+   // read all people from repository
    private fun fetch() {
-      when (val resultData = _repository.getAll()) {
-         is ResultData.Success -> {
-            logDebug(TAG, "fetch() people.size: ${resultData.data.size}")
-
-            val fetchedData = resultData.data.toList()
-            if(fetchedData == _peopleUiStateFlow.value.people) {
-               logDebug(TAG, "fetch() equal data, skipping update")
-               return // no people to update
-            }
+      logDebug(TAG, "fetch")
+      _repository.getAll()
+         .onSuccess { people ->
             _peopleUiStateFlow.update { it: PeopleUiState ->
                it.copy(people = emptyList())
-               it.copy(people = fetchedData)
+               it.copy(people = people)
             }
          }
-         is ResultData.Error -> handleErrorEvent(resultData.throwable)
-      }
+         .onFailure { t -> handleErrorEvent(t) }
    }
    // endregion
 
