@@ -120,6 +120,9 @@ class PersonViewModel(
          logDebug(TAG, "undoRemovePerson: ${person.id.as8()}")
          _repository.create(person)
             .onSuccess {
+               _personUiStateFlow.update { it: PersonUiState ->
+                  it.copy(person = person)  // new UiState
+               }
                removedPerson = null
                fetch()
             }
